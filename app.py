@@ -5,19 +5,19 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 
 # ---------------------------
-# 1️ Cargar modelo predictivo que hemos obtenido de nuestro notebook 
+# 1️⃣ Cargar modelo predictivo que hemos obtenido de nuestro notebook 
 # ---------------------------
 modelo = joblib.load("modelo_logistic.pkl")
 
 # ---------------------------
-# 2️. Título - Establecemos un título para la app
+# 2️⃣ Título - Establecemos un título para la app
 # ---------------------------
 st.set_page_config(page_title="Predicción de Abandono Académico", layout="wide")
-st.title("🎓 Predicción de Abandono Académico")
+st.title("Predicción de Abandono Académico")
 st.markdown("Introduce los datos del estudiante en la barra lateral para obtener la predicción.")
 
 # ---------------------------
-# 3️. Inputs en barra lateral - Estblecemos un titulo para el lugar donde se introducirán los datos del estudiante
+# 3️⃣ Inputs en barra lateral - Establecemos un titulo para el lugar donde se introducirán los datos del estudiante
 # ---------------------------
 st.sidebar.header("📋 Información del estudiante")
 
@@ -40,7 +40,6 @@ curr_2_approved = st.sidebar.number_input("2do Semestre: Unidades curriculares a
 curr_2_grade = st.sidebar.number_input("2do Semestre: Nota promedio de unidades curriculares", min_value=0.0, max_value=20.0, value=10.0)
 curr_2_without_eval = st.sidebar.number_input("2do Semestre: Unidades curriculares sin evaluación", value=0)
 
-
 # columnas booleanas / dummies
 debtor = st.sidebar.selectbox("Deudor", ["No", "Sí"])
 tuition_up_to_date = st.sidebar.selectbox("Matrícula al día", ["No", "Sí"])
@@ -48,7 +47,7 @@ gender = st.sidebar.selectbox("Género", ["Masculino", "Femenino"])
 scholarship = st.sidebar.selectbox("Beca", ["No", "Sí"])
 
 # ---------------------------
-# 4️. Creamos DataFrame con inputs (dummies correctas) - Para que encaje con las dummies finales del modelo ya que he tenido problemas creando y ejecutando las pipelines con un modelo cargado desde el notebook (lo cual sería mas limpio) he decidido hacerlo a mano.
+# 4️⃣ Creamos DataFrame con inputs (dummies correctas)
 # ---------------------------
 input_dict = {
     "Age at enrollment": age,
@@ -73,7 +72,7 @@ input_dict = {
 input_df = pd.DataFrame([input_dict])
 
 # ---------------------------
-# 5. Predecir - Predecimos el modelo
+# 5️⃣ Predecir - Predecimos el modelo
 # ---------------------------
 pred = modelo.predict(input_df)
 prob = modelo.predict_proba(input_df)
@@ -83,18 +82,19 @@ dropout_index = list(modelo.classes_).index("dropout")
 proba_dropout = prob[0][dropout_index]
 
 # ---------------------------
-# 6️. Resultados y Dashboard - Creamos con "With" las 2 páginas navegables de la app. Una para la predicción y otra un dashboard interactivo para comprender la naturaleza del dataset
+# 6️⃣ Resultados y Dashboard
 # ---------------------------
-tab1, tab2 = st.tabs(["📊 Resultado de Predicción", "📈 Dashboard"])
+tab1, tab2 = st.tabs(["Resultado de Predicción", "Dashboard"])
 
 with tab1:
-    st.subheader("📊 Resultado de Predicción")
+    st.subheader("Resultado de Predicción")
 
     # Probabilidad y Semáforo
     col1, col2 = st.columns(2)
 
     # Mostrar predicción
-    col1.metric("Predicción", pred[0])
+    pred_text = "Abandono" if pred[0] == "dropout" else "No abandono"
+    col1.metric("Predicción", pred_text)
 
     # Semáforo de riesgo
     if proba_dropout < 0.3:
@@ -103,14 +103,13 @@ with tab1:
         riesgo = "🟡 Riesgo medio (30-60%)"
     else:
         riesgo = "🔴 Riesgo alto (>60%)"
-
     col2.metric("Probabilidad de Abandono", f"{proba_dropout:.2%}", delta=riesgo)
 
     # Barra de progreso visual
     st.progress(float(proba_dropout))
 
-    # Factores más influyentes (coeficientes) - Enseñamos cuales son los factores mas influyentes en el modelo para que comprendan mejor que valores pesan mas
-    coef = modelo.coef_[0]  # modelo binario
+    # Factores más influyentes
+    coef = modelo.coef_[0]  
     feature_names = input_df.columns
     impact_df = pd.DataFrame({
         "Feature": feature_names,
@@ -120,31 +119,39 @@ with tab1:
     impact_df["Impacto"] = impact_df["Coeficiente"] * impact_df["Valor del estudiante"]
     impact_df = impact_df.sort_values(by="Impacto", key=abs, ascending=False).head(5)
 
-    with st.expander("🔍 Factores más influyentes"):
-        st.table(impact_df[["Feature", "Valor del estudiante", "Impacto"]])
+    with st.expander("🔍 Principales factores que influyen en la predicción"):
+        st.table(impact_df.rename(columns={
+            "Feature": "Variable",
+            "Valor del estudiante": "Valor del estudiante",
+            "Impacto": "Impacto"
+        })[["Variable", "Valor del estudiante", "Impacto"]])
 
     # Gráfico de probabilidades por clase
     st.subheader("Distribución de Probabilidades por Clase")
+
+    labels_map = {
+        "dropout": "Abandono",
+        "no_dropout": "No abandono",
+        "graduate": "Graduado"
+    }
+
+    clases_traducidas = [labels_map.get(c, c) for c in modelo.classes_]
+
     fig = px.bar(
-        x=modelo.classes_,
+        x=clases_traducidas,
         y=prob[0],
         labels={"x": "Clase", "y": "Probabilidad"},
-        color=modelo.classes_,
+        color=clases_traducidas,
         color_discrete_sequence=["red", "green", "blue"]
     )
-    fig.update_layout(title="Predicción por Clase", yaxis=dict(tickformat=".0%"))
-    st.plotly_chart(fig, use_container_width=True)
-
-
-
-# 7️⃣ Dashboard exploratorio 
+    fig.update_layout(title="Distribución de Probabilidades por Clase", yaxis=dict(tickformat=".0%"))
+    st.plotly_chart(fig, use_container_width=True, key="probabilidades_clase")
 with tab2:
-    st.subheader("📈 Dashboard de Análisis de Estudiantes")
+    st.subheader("Dashboard de Análisis de Estudiantes")
 
     @st.cache_data
     def load_data():
         df = pd.read_csv("df_students.csv")
-        # Normalizar strings para evitar problemas con mayúsculas o espacios
         df["Debtor"] = df["Debtor"].astype(str).str.strip().str.lower()
         df["Tuition fees up to date"] = df["Tuition fees up to date"].astype(str).str.strip().str.lower()
         df["Scholarship holder"] = df["Scholarship holder"].astype(str).str.strip().str.lower()
@@ -179,17 +186,17 @@ with tab2:
     ]
 
     # KPIs principales
-    st.markdown("### 📊 KPIs")
+    st.markdown("### KPIs")
     kpi_col1, kpi_col2 = st.columns(2)
 
     total_students = len(df_filtered)
-    avg_age = df_filtered["Age at enrollment"].mean()
+    avg_age = df_filtered["Age at enrollment"].mean() if total_students > 0 else 0
 
     kpi_col1.metric("Total Estudiantes", total_students)
     kpi_col2.metric("Edad Promedio", f"{avg_age:.1f}")
 
     # Gráficos interactivos
-    st.markdown("### 📈 Distribuciones")
+    st.markdown("### Distribuciones")
 
     # Deudores por Género
     fig1 = px.histogram(
@@ -199,7 +206,7 @@ with tab2:
         barmode="group",
         title="Distribución de Deudores por Género"
     )
-    st.plotly_chart(fig1, use_container_width=True)
+    st.plotly_chart(fig1, use_container_width=True, key="deudores_genero")
 
     # Matrícula al día vs Beca
     fig2 = px.histogram(
@@ -209,7 +216,7 @@ with tab2:
         barmode="group",
         title="Relación Beca y Matrícula al Día"
     )
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, use_container_width=True, key="beca_matricula")
 
     # Edad promedio por Género
     avg_age_df = df_filtered.groupby("Gender", as_index=False)["Age at enrollment"].mean()
@@ -222,7 +229,7 @@ with tab2:
         title="Edad Promedio por Género"
     )
     fig3.update_traces(texttemplate='%{text:.1f}', textposition='outside')
-    st.plotly_chart(fig3, use_container_width=True)
+    st.plotly_chart(fig3, use_container_width=True, key="edad_genero")
 
     # Histograma de Notas 1er Semestre
     fig4 = px.histogram(
@@ -233,7 +240,7 @@ with tab2:
         barmode="overlay", 
         title="Distribución de Notas 1er Semestre por Género"
     )
-    st.plotly_chart(fig4, use_container_width=True)
+    st.plotly_chart(fig4, use_container_width=True, key="notas_1sem")
 
     # Boxplot de Notas 2do Semestre
     fig5 = px.box(
@@ -244,4 +251,4 @@ with tab2:
         points="all", 
         title="Notas 2do Semestre según Beca"
     )
-    st.plotly_chart(fig5, use_container_width=True)
+    st.plotly_chart(fig5, use_container_width=True, key="notas_2sem")
